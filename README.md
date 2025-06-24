@@ -1,16 +1,17 @@
-# Opinionated Next.js Starter with Biome & GritQL
+# Opinionated Next.js Starter with Firebase & Biome & GritQL
 
 [![Built with Biome](https://img.shields.io/badge/formatter-Biome-blueviolet?style=flat-square&logo=biome)](https://biomejs.dev)
 [![Linted with GritQL](https://img.shields.io/badge/linter-GritQL-orange?style=flat-square)](https://www.grit.io/docs)
 
-A comprehensive, highly-opinionated starter template for building robust and scalable full-stack applications. This template integrates Next.js with Drizzle ORM, Inngest, and a powerful, custom-enforced set of coding standards called the Superbuilder Ruleset, powered by Biome and GritQL.
+A comprehensive, highly-opinionated starter template for building robust and scalable full-stack applications. This template integrates Next.js with Firebase (Auth & Firestore), Inngest, and a powerful, custom-enforced set of coding standards called the Superbuilder Ruleset, powered by Biome and GritQL.
 
 The philosophy of this starter is simple: **prevent entire classes of bugs at the source**. By enforcing strict patterns for error handling, data consistency, and type safety, we aim to build applications that are not only fast and modern but also exceptionally maintainable and reliable.
 
 ## Core Technologies
 
 *   **Framework**: [Next.js](https://nextjs.org/) (App Router)
-*   **ORM**: [Drizzle ORM](https://orm.drizzle.team/) (with PostgreSQL)
+*   **Database**: [Firebase Firestore](https://firebase.google.com/docs/firestore) (NoSQL)
+*   **Authentication**: [Firebase Auth](https://firebase.google.com/docs/auth)
 *   **Background Jobs**: [Inngest](https://www.inngest.com/)
 *   **Linting & Formatting**: [Biome](https://biomejs.dev/)
 *   **Custom Static Analysis**: [GritQL](https://www.grit.io/)
@@ -22,9 +23,9 @@ The philosophy of this starter is simple: **prevent entire classes of bugs at th
 
 ### Prerequisites
 
-*   [Bun](https://bun.sh/)
+*   [Bun](https://bun.sh/) or npm/yarn
 *   Node.js
-*   A PostgreSQL database
+*   A Firebase project
 
 ### Installation
 
@@ -37,30 +38,70 @@ The philosophy of this starter is simple: **prevent entire classes of bugs at th
 2.  **Install dependencies:**
     ```bash
     bun install
+    # or
+    npm install
     ```
 
-3.  **Set up environment variables:**
-    Copy the `src/env.js` file's `server` schema to a new `.env` file and fill in your database connection string.
+3.  **Set up Firebase:**
+    - Create a new Firebase project at [https://console.firebase.google.com](https://console.firebase.google.com)
+    - Enable Authentication and Firestore Database
+    - Enable the authentication providers you want (Email/Password, Google, GitHub)
+    - Create a service account key for server-side operations
+
+4.  **Set up environment variables:**
+    Copy the `.env.example` file to `.env` and fill in your Firebase configuration:
     ```bash
     cp .env.example .env
     ```
-    Your `.env` file should look like this:
-    ```.env
-    DATABASE_URL="postgresql://user:password@host:port/dbname?schema=public"
-    ```
-
-4.  **Push the database schema:**
-    This command will sync your Drizzle schema with your database.
-    ```bash
-    bun db:push
-    ```
+    Your `.env` file should include:
+    - Firebase Admin SDK credentials (for server-side)
+    - Firebase Client SDK configuration (for client-side)
 
 5.  **Run the development server:**
     ```bash
     bun dev
+    # or
+    npm run dev
+    ```
+
+6.  **Run Firebase emulators (optional, for local development):**
+    ```bash
+    bun firebase:emulators
+    # or
+    npm run firebase:emulators
     ```
 
 Your application should now be running at `http://localhost:3000`.
+
+## Firebase Setup
+
+### Firestore Security Rules
+
+The project includes comprehensive security rules in `firestore.rules`. Deploy them with:
+
+```bash
+bun firebase:deploy:rules
+# or
+npm run firebase:deploy:rules
+```
+
+### Firestore Indexes
+
+Composite indexes are defined in `firestore.indexes.json`. Deploy them with:
+
+```bash
+bun firebase:deploy:indexes
+# or
+npm run firebase:deploy:indexes
+```
+
+### Authentication
+
+The starter includes:
+- Email/Password authentication
+- OAuth providers (Google and GitHub)
+- Custom user profiles stored in Firestore
+- Auth state management with React Context
 
 ## The Superbuilder Ruleset: Enforced Best Practices
 
@@ -140,25 +181,23 @@ logger.info("user created: " + user.id);
 ```
 </details>
 
-### Database & Background Jobs (Drizzle & Inngest)
+### Firebase & Background Jobs (Firestore & Inngest)
 
 <details>
-<summary><strong>🚫 Ban <code>db.select</code> inside Inngest <code>step.run()</code></strong></summary>
+<summary><strong>🚫 Ban Large Data in Inngest <code>step.run()</code></strong></summary>
 
-**Rule:** Using `db.select()` or similar data-fetching methods inside an Inngest `step.run()` closure is strictly prohibited.
+**Rule:** Avoid returning large objects from Inngest `step.run()` closures, especially Firestore documents or query results.
 
-**Rationale:** The output of `step.run()` is serialized to JSON and sent over the network for memoization. Fetching and returning large database payloads can cause severe performance degradation, network bloat, and potential "request entity too large" errors. Data should be fetched *before* `step.run()`, or a dedicated data-fetching function should be called via `step.invoke()`.
-
-**Enforced by:** `gritql/no-db-select-in-step-run.grit`
+**Rationale:** The output of `step.run()` is serialized to JSON and sent over the network for memoization. Fetching and returning large payloads can cause severe performance degradation, network bloat, and potential "request entity too large" errors. Data should be fetched *before* `step.run()`, or a dedicated data-fetching function should be called via `step.invoke()`.
 
 #### ✅ Correct
 ```typescript
 // Fetch data BEFORE the step
-const user = await db.query.users.findFirst({ where: eq(users.id, event.data.userId) });
+const user = await getUserProfile(event.data.userId);
 
 // Pass only essential primitives into the step if needed
 const result = await step.run("process-user-action", async () => {
-    return await someExternalApiCall({ externalId: user.externalId });
+    return await someExternalApiCall({ externalId: user.uid });
 });
 ```
 
@@ -166,84 +205,41 @@ const result = await step.run("process-user-action", async () => {
 ```typescript
 const userPayload = await step.run("fetch-user", async () => {
     // This entire user object would be serialized and sent over HTTP
-    return await db.query.users.findFirst({ where: eq(users.id, event.data.userId) });
+    return await getUserProfile(event.data.userId);
 });
 ```
-</details>
-
-<details>
-<summary><strong>⚠️ Human-led Database Migrations</strong></summary>
-
-**Rule:** Never run `drizzle-kit generate` or `bun db:generate` automatically. Database migrations must be handled by a human developer.
-
-**Rationale:** Automated migration generation is dangerous and can lead to irreversible data loss. All schema changes require careful human review to assess impact, ensure data integrity, and plan for production deployment.
-
-**Process:**
-1.  Modify the schema files in `src/db/schemas/`.
-2.  **Manually** run `bun db:generate` to create a migration file.
-3.  Carefully review the generated SQL migration.
-4.  Apply the migration with `bun db:push` or a similar command.
 </details>
 
 ### Type Safety & Data Consistency
 
 <details>
-<summary><strong>🚫 Ban Unsafe <code>as</code> Type Assertions</strong></summary>
+<summary><strong>🔁 Data Consistency</strong></summary>
 
-**Rule:** The `as` keyword for type assertions is forbidden, with the sole exception of `as const` for creating immutable, literal types.
+**Rule:** Always use `""` (empty string) instead of `null` for optional string fields in Firestore documents.
 
-**Rationale:** The `as` keyword is a blind spot in TypeScript's type system. It tells the compiler to trust the developer's assertion, even if it's incorrect at runtime, leading to potential runtime errors. Safer alternatives like runtime validation (with Zod) or proper type narrowing should be used instead.
-
-**Enforced by:** `gritql/no-as-type-assertion.grit`
-
-#### ✅ Correct
-```typescript
-// Allowed for const assertions
-const command = 'start' as const;
-
-// Safe type narrowing
-if (typeof value === 'string') {
-    // value is now safely typed as string
-}
-```
-
-#### ❌ Incorrect
-```typescript
-const response: unknown = { id: 1 };
-
-// This is an unsafe cast and is banned.
-// If `response` doesn't have a `name` property, it will cause a runtime error.
-const user = response as { id: number; name: string };
-```
-</details>
-
-<details>
-<summary><strong>❓ Prefer <code>undefined</code> over <code>null</code></strong></summary>
-
-**Rule:** The use of `null` is forbidden in type declarations (annotations, aliases, generics). Always use `undefined` for representing missing or absent values.
-
-**Rationale:** JavaScript has two values for "nothing" (`null` and `undefined`), which can lead to confusion and boilerplate checks. By standardizing on `undefined`, we simplify logic, align with modern JavaScript idioms (e.g., optional chaining `?.`), and create a more consistent codebase.
+**Rationale:** JavaScript's type system conflates `null` and `undefined`, leading to subtle bugs. By standardizing on empty strings for optional string values, we create more predictable data models, simplify validation logic, and avoid null-checking complexity.
 
 **Enforced by:** `gritql/prefer-undefined-over-null.grit`
 
 #### ✅ Correct
 ```typescript
-const [value, setValue] = React.useState<string | undefined>(undefined);
-
-type UserProfile = {
-    name: string;
-    bio: string | undefined;
-}
+// Firestore document
+const newUser: UserProfile = {
+    uid: user.uid,
+    email: user.email || "",
+    displayName: user.displayName || "",
+    bio: ""  // Optional field, default to empty string
+};
 ```
 
 #### ❌ Incorrect
 ```typescript
-const [value, setValue] = React.useState<string | null>(null);
-
-type UserProfile = {
-    name: string;
-    bio: string | null;
-}
+const newUser: UserProfile = {
+    uid: user.uid,
+    email: user.email || null,
+    displayName: user.displayName || null,
+    bio: null
+};
 ```
 </details>
 
@@ -271,12 +267,16 @@ The project follows a feature-colocated structure within the Next.js `src/app` d
 └── src/
     ├── app/                 # Next.js App Router
     │   ├── api/             # API routes (e.g., for Inngest)
+    │   ├── auth/            # Authentication pages
+    │   ├── profile/         # User profile page
     │   ├── page.tsx         # Home page component
-    │   └── layout.tsx       # Root layout
-    ├── db/                  # Drizzle ORM setup
-    │   ├── schemas/         # Database table schemas
-    │   ├── scripts/         # Utility scripts (e.g., drop schema)
-    │   └── index.ts         # Drizzle client instance
+    │   └── layout.tsx       # Root layout with AuthProvider
+    ├── lib/                 # Library code
+    │   └── firebase/        # Firebase configuration and utilities
+    │       ├── admin.ts     # Firebase Admin SDK
+    │       ├── client.ts    # Firebase Client SDK
+    │       ├── auth/        # Authentication utilities
+    │       └── firestore/   # Firestore utilities
     ├── inngest/             # Inngest client and functions
     │   ├── functions/       # Inngest function definitions
     │   └── client.ts        # Inngest client initialization
@@ -287,19 +287,35 @@ The project follows a feature-colocated structure within the Next.js `src/app` d
 
 ## Available Commands
 
-| Command             | Description                                          |
-| ------------------- | ---------------------------------------------------- |
-| `bun build`         | Builds the application for production.               |
-| `bun check`         | Runs Biome linter and formatter checks.              |
-| `bun check:unsafe`  | Runs Biome checks with unsafe auto-fixes applied.    |
-| `bun check:write`   | Runs Biome checks and applies safe auto-fixes.       |
-| `bun db:generate`   | Generates a SQL migration file from schema changes.  |
-| `bun db:migrate`    | Applies pending database migrations.                 |
-| `bun db:push`       | Pushes schema changes directly to the database.      |
-| `bun db:studio`     | Opens the Drizzle Studio to browse your data.        |
-| `bun db:drop`       | **DANGER:** Drops the database schema.              |
-| `bun dev`           | Starts the development server with Turbo.            |
-| `bun dev:inngest`   | Starts the Inngest development server.               |
-| `bun preview`       | Builds and starts the production server.             |
-| `bun start`         | Starts the production server.                        |
-| `bun typecheck`     | Runs TypeScript type checking and Biome formatting.  |
+| Command                    | Description                                          |
+| ------------------------- | ---------------------------------------------------- |
+| `bun build`               | Builds the application for production.               |
+| `bun check`               | Runs Biome linter and formatter checks.              |
+| `bun check:unsafe`        | Runs Biome checks with unsafe auto-fixes applied.    |
+| `bun check:write`         | Runs Biome checks and applies safe auto-fixes.       |
+| `bun firebase:emulators`  | Starts Firebase emulators for local development.     |
+| `bun firebase:deploy`     | Deploys Firebase rules and indexes.                  |
+| `bun firebase:deploy:rules` | Deploys only Firestore security rules.            |
+| `bun firebase:deploy:indexes` | Deploys only Firestore indexes.                 |
+| `bun dev`                 | Starts the development server with Turbo.            |
+| `bun dev:inngest`         | Starts the Inngest development server.               |
+| `bun preview`             | Builds and starts the production server.             |
+| `bun start`               | Starts the production server.                        |
+| `bun typecheck`           | Runs TypeScript type checking and Biome fixes.       |
+
+## Contributing
+
+This starter is designed to enforce strict coding standards. Before contributing:
+
+1. Ensure all Biome checks pass: `bun check`
+2. Run type checking: `bun typecheck`
+3. Follow the established patterns for error handling, logging, and data modeling
+4. Write structured, explicit code that aligns with the Superbuilder philosophy
+
+## License
+
+MIT
+
+---
+
+Built with ❤️ by the Superbuilders team. Happy coding!

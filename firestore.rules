@@ -1,0 +1,74 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+    
+    function isValidUser() {
+      return isSignedIn() && 
+        request.auth.token.email_verified == true;
+    }
+    
+    function hasRequiredUserFields() {
+      return request.resource.data.keys().hasAll(['uid', 'email', 'displayName', 'photoURL', 'emailVerified', 'bio', 'createdAt', 'updatedAt', 'metadata']);
+    }
+    
+    function hasRequiredPostFields() {
+      return request.resource.data.keys().hasAll(['title', 'content', 'authorId', 'author', 'createdAt', 'updatedAt']);
+    }
+    
+    // Users collection rules
+    match /users/{userId} {
+      // Anyone can read user profiles
+      allow read: if true;
+      
+      // Users can only create their own profile
+      allow create: if isOwner(userId) && 
+        hasRequiredUserFields() &&
+        request.resource.data.uid == userId;
+      
+      // Users can only update their own profile
+      allow update: if isOwner(userId) &&
+        request.resource.data.uid == userId &&
+        // Prevent changing uid
+        request.resource.data.uid == resource.data.uid;
+      
+      // Prevent accidental deletion
+      allow delete: if false;
+    }
+    
+    // Posts collection rules
+    match /posts/{postId} {
+      // Anyone can read posts
+      allow read: if true;
+      
+      // Only authenticated users can create posts
+      allow create: if isSignedIn() && 
+        hasRequiredPostFields() &&
+        request.resource.data.authorId == request.auth.uid &&
+        request.resource.data.author.uid == request.auth.uid;
+      
+      // Only post authors can update their posts
+      allow update: if isSignedIn() && 
+        resource.data.authorId == request.auth.uid &&
+        // Prevent changing authorId
+        request.resource.data.authorId == resource.data.authorId &&
+        request.resource.data.author.uid == resource.data.author.uid;
+      
+      // Only post authors can delete their posts
+      allow delete: if isSignedIn() && 
+        resource.data.authorId == request.auth.uid;
+    }
+    
+    // Deny all other access
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+} 

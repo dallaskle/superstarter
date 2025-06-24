@@ -1,0 +1,52 @@
+# Firebase Migration Todo List
+
+## Phase 1: Firebase Setup & Configuration
+- [x] Remove PostgreSQL and Drizzle dependencies
+- [x] Install Firebase dependencies (firebase, firebase-admin, react-firebase-hooks)
+- [x] Update src/env.js with Firebase environment variables
+- [x] Create .env.example with Firebase config template
+
+## Phase 2: Remove SQL Infrastructure
+- [x] Delete src/db/ directory
+- [x] Delete drizzle.config.ts
+- [x] Remove database scripts from package.json
+- [x] Update .gitignore to remove database entries
+
+## Phase 3: Create Firebase Service Layer
+- [x] Create src/lib/firebase/ directory structure
+- [x] Create src/lib/firebase/admin.ts (Server-side Firebase Admin)
+- [x] Create src/lib/firebase/client.ts (Client-side Firebase)
+- [x] Create src/lib/firebase/auth/config.ts
+- [x] Create src/lib/firebase/auth/context.tsx (React Context)
+- [x] Create src/lib/firebase/auth/hooks.ts (Custom auth hooks)
+- [x] Create src/lib/firebase/auth/server.ts (Server utilities)
+- [x] Create src/lib/firebase/firestore/users.ts
+- [x] Create src/lib/firebase/firestore/posts.ts
+- [x] Create src/lib/firebase/firestore/converters.ts
+
+## Phase 4: Firebase Configuration Files
+- [x] Create firebase.json for emulator configuration
+- [x] Create firestore.rules for security rules
+- [x] Create firestore.indexes.json for composite indexes
+
+## Phase 5: Update Application Code
+- [x] Update src/app/layout.tsx to include AuthProvider
+- [x] Update src/app/page.tsx to use Firebase Auth
+- [x] Create auth pages (sign-in, sign-up, profile)
+
+## Phase 6: Update Inngest Functions
+- [x] Update src/inngest/functions/hello.ts to demonstrate Firebase integration
+- [x] Update event schemas in src/inngest/client.ts
+
+## Phase 7: Documentation & Cleanup
+- [x] Update README.md with Firebase setup instructions
+- [x] Remove PostgreSQL references from documentation
+- [x] Update technology stack in rules/technology-stack.mdc
+- [x] Remove database-related GritQL rules
+- [x] Update rules to reflect Firebase patterns
+
+## Phase 8: Testing & Verification
+- [x] Test Firebase emulators setup
+- [x] Verify authentication flow
+- [x] Test Firestore operations
+- [x] Ensure all Biome/GritQL rules pass (core rules pass, some nursery rules remain)
