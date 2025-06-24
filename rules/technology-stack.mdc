@@ -3,16 +3,16 @@ description:
 globs: 
 alwaysApply: true
 ---
-
 ### Technology Stack
 
 #### ⚠️ CRITICAL: Required Stack Components
 
-**Runtime**: Bun + Next.js  
-**Package Manager**: Bun  
-**Database ORM**: Drizzle ORM
+**Runtime**: Node.js + Next.js  
+**Package Manager**: npm  
+**Database**: Firebase Firestore (NoSQL)
+**Authentication**: Firebase Auth
 
 ### Commands
 
-**Setup**: `bun install`  
-**Format/Typecheck**: `bun typecheck`
+**Setup**: `npm install`  
+**Format/Typecheck**: `npm run typecheck`
